@@ -44,8 +44,8 @@ try {
 } catch {}
 
 function requireAdmin(req, res, next) {
-  const u = process.env.ADMIN_USER;
-  const p = process.env.ADMIN_PASS;
+  const u = (process.env.ADMIN_USER || "").trim();
+  const p = (process.env.ADMIN_PASS || "").trim();
   const a = req.headers.authorization || "";
   if (!u || !p) return res.status(503).send("admin_not_configured");
   if (!a.startsWith("Basic ")) {
@@ -54,8 +54,8 @@ function requireAdmin(req, res, next) {
   }
   const decoded = Buffer.from(a.slice(6), "base64").toString();
   const i = decoded.indexOf(":");
-  const user = i === -1 ? decoded : decoded.slice(0, i);
-  const pass = i === -1 ? "" : decoded.slice(i + 1);
+  const user = (i === -1 ? decoded : decoded.slice(0, i)).trim();
+  const pass = (i === -1 ? "" : decoded.slice(i + 1)).trim();
   if (user === u && pass === p) return next();
   res.setHeader("WWW-Authenticate", "Basic realm=\"Admin\"");
   return res.status(401).end();
