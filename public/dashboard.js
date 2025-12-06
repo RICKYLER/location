@@ -1,6 +1,9 @@
 let map;
 let markers = [];
 let stream;
+let pollTimer = null;
+let currentLinkId = null;
+let lastTimestamp = 0;
 const linkSelect = document.getElementById("linkSelect");
 const tbody = document.querySelector("#eventsTable tbody");
 const admName = document.getElementById("admName");
@@ -82,12 +85,32 @@ function renderEvents(events) {
 
 function subscribeStream(linkId) {
   if (stream) stream.close();
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  currentLinkId = linkId;
   stream = new EventSource(`/api/events/stream?linkId=${encodeURIComponent(linkId)}`);
   stream.onmessage = (ev) => {
     const e = JSON.parse(ev.data);
     if (e.linkId !== linkId) return;
     appendEvent(e);
+    if (e.timestamp && e.timestamp > lastTimestamp) lastTimestamp = e.timestamp;
   };
+  stream.onerror = () => {
+    try { stream.close(); } catch {}
+    startPolling(linkId);
+  };
+}
+
+function startPolling(linkId) {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/events?linkId=${encodeURIComponent(linkId)}`);
+      const events = await res.json();
+      renderEvents(events);
+      const maxTs = events.reduce((m, e) => Math.max(m, e.timestamp || 0), lastTimestamp);
+      lastTimestamp = maxTs;
+    } catch {}
+  }, 3000);
 }
 
 async function loadEvents(linkId) {

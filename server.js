@@ -8,25 +8,37 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 
-const dataPath = path.join(__dirname, "data.json");
+const isVercel = !!process.env.VERCEL;
+let memoryData = { links: {}, events: [] };
+const dataPath = isVercel
+  ? path.join(process.env.TMPDIR || "/tmp", "data.json")
+  : path.join(__dirname, "data.json");
 
 function readData() {
   try {
     const raw = fs.readFileSync(dataPath, "utf-8");
-    return JSON.parse(raw);
+    memoryData = JSON.parse(raw);
   } catch (e) {
-    return { links: {}, events: [] };
+    // fallback to memory
   }
+  return memoryData;
 }
 
 function writeData(data) {
-  fs.writeFileSync(dataPath, JSON.stringify(data));
+  memoryData = data;
+  try {
+    fs.writeFileSync(dataPath, JSON.stringify(data));
+  } catch (e) {
+    // ignore write errors on read-only fs
+  }
 }
 
 const subscribers = new Map();
-const uploadsDir = path.join(__dirname, "public", "uploads");
+const uploadsDir = isVercel
+  ? path.join(process.env.TMPDIR || "/tmp", "uploads")
+  : path.join(__dirname, "public", "uploads");
 try {
   if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 } catch {}
@@ -77,6 +89,8 @@ app.get("/", requireAdmin, (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, "public")));
+// Serve uploads from tmp when on Vercel
+app.use("/uploads", express.static(uploadsDir));
 
 app.post("/api/link", requireAdmin, (req, res) => {
   const { name, redirectUrl, trackingWindow } = req.body;
